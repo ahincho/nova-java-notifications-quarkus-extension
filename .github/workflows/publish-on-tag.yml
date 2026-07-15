@@ -1,12 +1,14 @@
-name: Publish on Tag
+﻿name: Publish on Tag
 
 on:
-  push:
-    tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_run:
+    workflows: ["Release Please"]
+    types: [completed]
+    branches: [main]
 
 jobs:
   publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -17,32 +19,76 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Detect new release tag
+        id: detect
+        env:
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          LATEST_TAG=$(git for-each-ref --sort=-creatordate --format='%(refname:short)' refs/tags/v\* 2>/dev/null | head -1)
+          if [ -z "$LATEST_TAG" ]; then
+            echo "::notice::No semver tag exists yet. Skipping publish."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ ! "$LATEST_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::notice::Latest tag $LATEST_TAG is not a valid semver. Skipping."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          TAG_VERSION="${LATEST_TAG#v}"
+          MANIFEST_VERSION=$(jq -r '."."' .release-please-manifest.json 2>/dev/null || echo "")
+          if [ "$TAG_VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "::notice::Latest tag ($LATEST_TAG) does not match manifest ($MANIFEST_VERSION). No release was created in the triggering workflow_run. Skipping."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -n "${WORKFLOW_RUN_HEAD_SHA}" ]; then
+            TAG_SHA=$(git rev-list -n 1 "${LATEST_TAG}" 2>/dev/null || echo "")
+            if [ "${TAG_SHA}" != "${WORKFLOW_RUN_HEAD_SHA}" ]; then
+              echo "::notice::Tag ${LATEST_TAG} (${TAG_SHA}) was NOT created in this workflow_run (head_sha=${WORKFLOW_RUN_HEAD_SHA}). Skipping."
+              echo "should_publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Tag ${LATEST_TAG} confirmed as new (matches workflow_run head_sha)."
+          else
+            echo "::warning::No workflow_run.head_sha available; relying solely on manifest match."
+          fi
+          echo "New release detected: $LATEST_TAG (manifest version matches: $MANIFEST_VERSION)"
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+
       - name: Make gradlew executable
+        if: steps.detect.outputs.should_publish == 'true'
         run: chmod +x ./gradlew
 
       - name: Validate tag format
+        if: steps.detect.outputs.should_publish == 'true'
         run: |
-          if [[ ! "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Tag ${{ github.ref_name }} does not match vX.Y.Z format"
+          TAG="${{ steps.detect.outputs.tag }}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag $TAG does not match vX.Y.Z format"
             exit 1
           fi
-          echo "Tag ${{ github.ref_name }} is valid semver"
+          echo "Tag $TAG is valid semver"
 
       - name: Sync version from tag to gradle.properties
+        if: steps.detect.outputs.should_publish == 'true'
         run: |
-          TAG_VERSION="${{ github.ref_name }}"
+          TAG_VERSION="${{ steps.detect.outputs.tag }}"
           VERSION="${TAG_VERSION#v}"
           echo "Setting version=${VERSION} in gradle.properties"
           sed -i "s/^version=.*/version=${VERSION}/" gradle.properties
           cat gradle.properties
 
       - name: Nova Setup Java
+        if: steps.detect.outputs.should_publish == 'true'
         uses: ahincho/nova-devops/.github/actions/nova-setup-java@main
         with:
           java-version: '25'
           build-tool: gradle
 
       - name: Resolve package visibility
+        if: steps.detect.outputs.should_publish == 'true'
         id: visibility
         env:
           REPO_VISIBILITY: ${{ github.event.repository.visibility }}
@@ -57,6 +103,7 @@ jobs:
           echo "Effective visibility: ${EFFECTIVE}"
 
       - name: Validate visibility compatibility
+        if: steps.detect.outputs.should_publish == 'true'
         shell: bash
         run: |
           REPO_VIS="${{ github.event.repository.visibility }}"
@@ -71,31 +118,8 @@ jobs:
           fi
           echo "Visibility validation OK"
 
-      - name: Resolve packages read token
-        id: resolve_token
-        env:
-          ACTOR: ${{ github.actor }}
-          TOKEN_A: ${{ secrets.NOVA_PACKAGES_READ_TOKEN }}
-          TOKEN_B: ${{ secrets.NOVA_RELEASE_PAT }}
-          TOKEN_C: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Pick the first non-empty token (NOVA_PACKAGES_READ_TOKEN > NOVA_RELEASE_PAT > GITHUB_TOKEN).
-          # GitHub Actions expression `secrets.X || secrets.Y` doesn't short-circuit
-          # the way bash `||` does; we do it in shell instead. Without this step,
-          # the expression evaluates to "1" (one char) when secrets.NOVA_PACKAGES_READ_TOKEN
-          # is unset (treated as null), even if secrets.NOVA_RELEASE_PAT has a value.
-          if [ -n "${TOKEN_A}" ]; then
-            echo "value=${TOKEN_A}" >> "$GITHUB_OUTPUT"
-            echo "Resolved from NOVA_PACKAGES_READ_TOKEN (length=${#TOKEN_A})"
-          elif [ -n "${TOKEN_B}" ]; then
-            echo "value=${TOKEN_B}" >> "$GITHUB_OUTPUT"
-            echo "Resolved from NOVA_RELEASE_PAT (length=${#TOKEN_B})"
-          else
-            echo "value=${TOKEN_C}" >> "$GITHUB_OUTPUT"
-            echo "Resolved from GITHUB_TOKEN (length=${#TOKEN_C})"
-          fi
-
       - name: Publish to GitHub Packages
+        if: steps.detect.outputs.should_publish == 'true'
         # Pass credentials as Gradle properties (findProperty) AND env vars
         # (System.getenv fallback). Some Gradle 9.x plugin combinations cache
         # the credentials block at script-evaluation time, so the env-var path
@@ -113,4 +137,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Used only to READ internal Nova Platform dependencies published in other
           # repos' GitHub Packages (GITHUB_TOKEN cannot read packages cross-repo).
-          NOVA_PACKAGES_READ_TOKEN: ${{ steps.resolve_token.outputs.value }}
+          # NOVA_RELEASE_PAT fallback was REMOVED in Phase 3; configure
+          # NOVA_PACKAGES_READ_TOKEN to preserve cross-repo reads.
+          NOVA_PACKAGES_READ_TOKEN: ${{ secrets.NOVA_PACKAGES_READ_TOKEN || secrets.GITHUB_TOKEN }}
