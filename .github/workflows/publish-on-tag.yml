@@ -96,7 +96,16 @@ jobs:
           fi
 
       - name: Publish to GitHub Packages
-        run: ./gradlew publish -Pvisibility=${{ steps.visibility.outputs.value }}
+        # Pass credentials as Gradle properties (findProperty) AND env vars
+        # (System.getenv fallback). Some Gradle 9.x plugin combinations cache
+        # the credentials block at script-evaluation time, so the env-var path
+        # can return null even though it's exported in this step. Passing via
+        # -Pflag=val guarantees the value is bound when the publish task runs.
+        run: >-
+          ./gradlew publish
+          -Pvisibility=${{ steps.visibility.outputs.value }}
+          -Pgpr.user=${{ github.actor }}
+          -Pgpr.key=${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -149,8 +149,19 @@ publishing {
             name = "GitHubPackages"
             url = uri("https://maven.pkg.github.com/ahincho/nova-java-notifications-quarkus-extension")
             credentials {
-                username = System.getenv("GITHUB_ACTOR")
-                password = System.getenv("GITHUB_TOKEN")
+                // Use findProperty first (works with -Pflag=val), fall back to env vars
+                // (works in GitHub Actions where the publish step exports them).
+                // System.getenv() alone failed silently when credentials were not
+                // configured in time during the publish task evaluation, producing
+                // a "ghost publish" (BUILD SUCCESSFUL but no JAR uploaded).
+                username = findProperty("gpr.user") as String?
+                    ?: System.getenv("GITHUB_ACTOR")
+                    ?: "x-access-token"
+                password = findProperty("gpr.key") as String?
+                    ?: System.getenv("GITHUB_TOKEN")
+                    ?: System.getenv("NOVA_RELEASE_PAT")
+                    ?: System.getenv("NOVA_PACKAGES_READ_TOKEN")
+                    ?: ""
             }
         }
     }
