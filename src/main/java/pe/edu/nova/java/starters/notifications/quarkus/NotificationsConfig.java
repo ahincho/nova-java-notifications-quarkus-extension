@@ -7,11 +7,21 @@ import java.util.Optional;
 /**
  * Quarkus configuration mapping for the notifications extension.
  *
- * <p>Maps the {@code nova.notifications.*} properties from {@code application.properties}.
- * Uses the same prefix as the Spring Boot starter and Micronaut module, and
- * follows the same convention as the newer Nova starters
- * (e.g. {@code nova-observability-spring-boot-starter} uses
- * {@code nova.observability.*}).
+ * <p>Maps the {@code nova.notifications.*} properties from
+ * {@code application.properties}. Uses the same prefix as the Spring Boot
+ * starter and Micronaut module, and follows the same convention as the
+ * newer Nova starters (e.g. {@code nova-observability-spring-boot-starter}
+ * uses {@code nova.observability.*}).
+ *
+ * <p>This interface is intentionally minimal: it only carries the
+ * master {@code enabled} switch and the {@code resilience} defaults.
+ * Each channel configuration (Email, Sms, Push, Slack) is exposed as a
+ * SEPARATE top-level {@code @ConfigMapping} bean, and the
+ * {@link NotificationsProducer} injects them independently. This is
+ * the SmallRye 3.x idiom for nested config: the alternative (a single
+ * outer {@code @ConfigMapping} with nested interface methods) silently
+ * drops the nested property values because SmallRye treats the nested
+ * interface as an opaque object instead of recursively binding into it.
  */
 @ConfigMapping(prefix = "nova.notifications", namingStrategy = ConfigMapping.NamingStrategy.VERBATIM)
 public interface NotificationsConfig {
@@ -19,16 +29,9 @@ public interface NotificationsConfig {
     /** Master switch, default {@code true}. */
     Optional<Boolean> enabled();
 
-    Email email();
-
-    Optional<Sms> sms();
-
-    Optional<Push> push();
-
-    Optional<Slack> slack();
-
     Resilience resilience();
 
+    @ConfigMapping(prefix = "nova.notifications.email", namingStrategy = ConfigMapping.NamingStrategy.VERBATIM)
     interface Email {
         /** "sendgrid" or "mailgun". */
         String provider();
@@ -36,6 +39,7 @@ public interface NotificationsConfig {
         String defaultSender();
     }
 
+    @ConfigMapping(prefix = "nova.notifications.sms", namingStrategy = ConfigMapping.NamingStrategy.VERBATIM)
     interface Sms {
         default String provider() {
             return "twilio";
@@ -45,6 +49,7 @@ public interface NotificationsConfig {
         String fromNumber();
     }
 
+    @ConfigMapping(prefix = "nova.notifications.push", namingStrategy = ConfigMapping.NamingStrategy.VERBATIM)
     interface Push {
         default String provider() {
             return "firebase";
@@ -53,10 +58,12 @@ public interface NotificationsConfig {
         String serverKey();
     }
 
+    @ConfigMapping(prefix = "nova.notifications.slack", namingStrategy = ConfigMapping.NamingStrategy.VERBATIM)
     interface Slack {
         String defaultWebhookUrl();
     }
 
+    @ConfigMapping(prefix = "nova.notifications.resilience", namingStrategy = ConfigMapping.NamingStrategy.VERBATIM)
     interface Resilience {
         default int maxAttempts() {
             return 3;
@@ -75,7 +82,7 @@ public interface NotificationsConfig {
         }
     }
 
-    /** Hidden helper to convert a long millis to a {@link Duration} (used by the recorder). */
+    /** Hidden helper to convert a long millis to a {@link Duration}. */
     static Duration durationOfMillis(long millis) {
         return Duration.ofMillis(millis);
     }

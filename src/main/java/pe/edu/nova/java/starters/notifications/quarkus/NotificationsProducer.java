@@ -29,6 +29,12 @@ import pe.edu.nova.java.libs.notifications.infrastructure.configuration.SmsProvi
  * {@code docs/java/07-quarkus-analisis-adopcion.md}): only CDI beans, no
  * {@code @BuildStep}, no deployment/runtime split. Quarkus auto-discovers
  * the {@code @Singleton} via its Jandex index.
+ *
+ * <p>The producer injects each nested channel config (Email, Sms, Push,
+ * Slack) as a separate CDI bean. SmallRye 3.x requires nested
+ * {@code @ConfigMapping} interfaces to be declared as separate top-level
+ * beans (see {@link NotificationsConfig}); the producer mirrors that
+ * structure.
  */
 @ApplicationScoped
 public class NotificationsProducer {
@@ -39,6 +45,10 @@ public class NotificationsProducer {
     @Singleton
     public NotificationConfiguration notificationConfiguration(
             NotificationsConfig config,
+            Instance<NotificationsConfig.Email> emailConfig,
+            Instance<NotificationsConfig.Sms> smsConfig,
+            Instance<NotificationsConfig.Push> pushConfig,
+            Instance<NotificationsConfig.Slack> slackConfig,
             Instance<NotificationEventPublisherPort> customEventPublisher) {
 
         NotificationConfiguration.Builder builder = NotificationConfiguration.builder()
@@ -46,7 +56,7 @@ public class NotificationsProducer {
 
         customEventPublisher.forEach(builder::eventPublisher);
 
-        applyConfigToBuilder(config, builder);
+        applyConfigToBuilder(config, builder, emailConfig, smsConfig, pushConfig, slackConfig);
 
         NotificationConfiguration configuration = builder.build();
         LOGGER.info("Nova Notifications (Quarkus) initialized. Email: {}, SMS: {}, Push: {}, Slack: {}",
@@ -59,9 +69,14 @@ public class NotificationsProducer {
 
     /**
      * Visible for unit tests: the channel-mapping logic, decoupled from the
-     * CDI {@code Instance} parameter which is hard to mock in pure JUnit.
+     * CDI {@code Instance} parameters which are hard to mock in pure JUnit.
      */
-    void applyConfigToBuilder(NotificationsConfig config, NotificationConfiguration.Builder builder) {
+    void applyConfigToBuilder(NotificationsConfig config,
+                              NotificationConfiguration.Builder builder,
+                              Instance<NotificationsConfig.Email> emailConfig,
+                              Instance<NotificationsConfig.Sms> smsConfig,
+                              Instance<NotificationsConfig.Push> pushConfig,
+                              Instance<NotificationsConfig.Slack> slackConfig) {
         if (!config.enabled().orElse(true)) {
             // Library is disabled at the starter level: skip all channel
             // assembly. The resilience config (set by the caller before this
@@ -71,26 +86,27 @@ public class NotificationsProducer {
             // a startup {@code ConfigurationException}.
             return;
         }
-        NotificationsConfig.Email email = config.email();
-        if (email != null && allPresent(email.provider(), email.apiKey(), email.defaultSender())) {
-            builder.email(EmailConfiguration.builder()
-                    .provider(EmailProvider.valueOf(email.provider().toUpperCase()))
-                    .apiKey(email.apiKey())
-                    .defaultSender(new EmailAddress(email.defaultSender()))
-                    .build());
-        }
-        config.sms().ifPresent(sms -> builder.sms(SmsConfiguration.builder()
+        emailConfig.forEach(email -> {
+            if (allPresent(email.provider(), email.apiKey(), email.defaultSender())) {
+                builder.email(EmailConfiguration.builder()
+                        .provider(EmailProvider.valueOf(email.provider().toUpperCase()))
+                        .apiKey(email.apiKey())
+                        .defaultSender(new EmailAddress(email.defaultSender()))
+                        .build());
+            }
+        });
+        smsConfig.forEach(sms -> builder.sms(SmsConfiguration.builder()
                 .provider(SmsProvider.valueOf(sms.provider().toUpperCase()))
                 .accountSid(sms.accountSid())
                 .authToken(sms.authToken())
                 .fromNumber(sms.fromNumber())
                 .build()));
-        config.push().ifPresent(push -> builder.push(PushConfiguration.builder()
+        pushConfig.forEach(push -> builder.push(PushConfiguration.builder()
                 .provider(PushProvider.valueOf(push.provider().toUpperCase()))
                 .projectId(push.projectId())
                 .serverKey(push.serverKey())
                 .build()));
-        config.slack().ifPresent(slack -> builder.slack(SlackConfiguration.builder()
+        slackConfig.forEach(slack -> builder.slack(SlackConfiguration.builder()
                 .defaultWebhookUrl(SlackWebhookUrl.of(slack.defaultWebhookUrl()))
                 .build()));
     }
