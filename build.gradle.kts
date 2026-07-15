@@ -127,7 +127,7 @@ publishing {
                     "Nova Platform Quarkus extension (colloquial, no @BuildStep) that bridges " +
                     "nova-notifications (framework-agnostic, pe.edu.nova.java.libs) with Quarkus. " +
                     "Exposes NotificationConfiguration and NotificationFacade as @Singleton CDI beans, " +
-                    "configurable via @ConfigMapping under galaxy-training.notifications.*"
+                    "configurable via @ConfigMapping under nova.notifications.*"
                 )
                 url.set("https://github.com/ahincho/nova-java-notifications-quarkus-extension")
                 licenses {
