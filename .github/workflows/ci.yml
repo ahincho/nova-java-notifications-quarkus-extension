@@ -1,6 +1,7 @@
 name: CI/CD Pipeline
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - main
@@ -18,23 +19,11 @@ jobs:
     uses: ahincho/nova-devops/.github/workflows/reusable-sonarcloud-gradle.yml@main
     with:
       sonar-org: ahincho
-      sonar-project-key: ahincho_nova-notifications-quarkus-extension
+      sonar-project-key: ahincho_nova-java-notifications-quarkus-extension
     secrets: inherit
 
   matrix:
     uses: ahincho/nova-devops/.github/workflows/reusable-build-matrix.yml@main
-    with:
-      build-tool: gradle
-    secrets: inherit
-
-  owasp:
-    uses: ahincho/nova-devops/.github/workflows/reusable-owasp-check.yml@main
-    with:
-      build-tool: gradle
-    secrets: inherit
-
-  sbom:
-    uses: ahincho/nova-devops/.github/workflows/reusable-sbom.yml@main
     with:
       build-tool: gradle
     secrets: inherit
