@@ -1,0 +1,81 @@
+name: Publish on Tag
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Validate tag format
+        run: |
+          if [[ ! "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag ${{ github.ref_name }} does not match vX.Y.Z format"
+            exit 1
+          fi
+          echo "Tag ${{ github.ref_name }} is valid semver"
+
+      - name: Sync version from tag to gradle.properties
+        run: |
+          TAG_VERSION="${{ github.ref_name }}"
+          VERSION="${TAG_VERSION#v}"
+          echo "Setting version=${VERSION} in gradle.properties"
+          sed -i "s/^version=.*/version=${VERSION}/" gradle.properties
+          cat gradle.properties
+
+      - name: Nova Setup Java
+        uses: ahincho/nova-devops/.github/actions/nova-setup-java@main
+        with:
+          java-version: '25'
+          build-tool: gradle
+
+      - name: Resolve package visibility
+        id: visibility
+        env:
+          REPO_VISIBILITY: ${{ github.event.repository.visibility }}
+          VAR_VISIBILITY: ${{ vars.NOVA_PACKAGE_VISIBILITY }}
+        run: |
+          if [ -n "${VAR_VISIBILITY}" ]; then
+            EFFECTIVE="${VAR_VISIBILITY}"
+          else
+            EFFECTIVE="public"
+          fi
+          echo "value=${EFFECTIVE}" >> "$GITHUB_OUTPUT"
+          echo "Effective visibility: ${EFFECTIVE}"
+
+      - name: Validate visibility compatibility
+        shell: bash
+        run: |
+          REPO_VIS="${{ github.event.repository.visibility }}"
+          PKG_VIS="${{ steps.visibility.outputs.value }}"
+          if [ "${REPO_VIS}" = "public" ] && [ "${PKG_VIS}" = "private" ]; then
+            echo "::error::Cannot publish private package from public repo"
+            exit 1
+          fi
+          if [ "${REPO_VIS}" = "private" ] && [ "${PKG_VIS}" = "public" ]; then
+            echo "::error::Cannot publish public package from private repo"
+            exit 1
+          fi
+          echo "Visibility validation OK"
+
+      - name: Publish to GitHub Packages
+        run: ./gradlew publish -Pvisibility=${{ steps.visibility.outputs.value }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Used only to READ internal Nova Platform dependencies published in other
+          # repos' GitHub Packages (GITHUB_TOKEN cannot read packages cross-repo).
+          NOVA_PACKAGES_READ_TOKEN: ${{ secrets.NOVA_PACKAGES_READ_TOKEN || secrets.NOVA_RELEASE_PAT || secrets.GITHUB_TOKEN }}

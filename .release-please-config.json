@@ -1,0 +1,16 @@
+{
+  "last-release-sha": "0000000000000000000000000000000000000000",
+  "packages": {
+    ".": {
+      "component": "nova-notifications-quarkus-extension",
+      "package-name": "pe.edu.nova.java.starters:nova-notifications-quarkus-extension",
+      "release-type": "java",
+      "include-component-in-tag": false,
+      "skip-snapshot": true,
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "draft": false,
+      "prerelease": false
+    }
+  }
+}

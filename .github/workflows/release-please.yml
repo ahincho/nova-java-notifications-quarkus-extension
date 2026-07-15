@@ -1,0 +1,26 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    uses: ahincho/nova-devops/.github/workflows/reusable-release-please.yml@main
+    with:
+      release-type: java
+      path: .
+      config-file: .release-please-config.json
+      manifest-file: .release-please-manifest.json
+    secrets:
+      # NOVA_RELEASE_PAT is a Personal Access Token (contents:write + pull-requests:write).
+      # GITHUB_TOKEN cannot be used here because GitHub does not trigger new workflow
+      # runs (e.g. publish-on-tag.yml) for tags/pushes made with the automatic token.
+      # Falls back to GITHUB_TOKEN if the PAT is not yet configured (release-please
+      # itself still works, only the tag it creates won't auto-trigger the publish).
+      GH_TOKEN: ${{ secrets.NOVA_RELEASE_PAT || secrets.GITHUB_TOKEN }}
