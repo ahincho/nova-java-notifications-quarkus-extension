@@ -101,8 +101,10 @@ jobs:
         # the credentials block at script-evaluation time, so the env-var path
         # can return null even though it's exported in this step. Passing via
         # -Pflag=val guarantees the value is bound when the publish task runs.
+        # --info --stacktrace surfaces any silent 4xx responses from GH Packages.
         run: >-
           ./gradlew publish
+          --info --stacktrace
           -Pvisibility=${{ steps.visibility.outputs.value }}
           -Pgpr.user=${{ github.actor }}
           -Pgpr.key=${{ secrets.GITHUB_TOKEN }}
