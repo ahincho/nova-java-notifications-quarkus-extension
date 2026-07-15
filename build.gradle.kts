@@ -142,33 +142,6 @@ publishing {
     publications {
         create<MavenPublication>("mavenJava") {
             from(components["java"])
-            pom {
-                name.set("Nova Platform Notifications Quarkus Extension")
-                description.set(
-                    "Nova Platform Quarkus extension (colloquial, no @BuildStep) that bridges " +
-                    "nova-notifications (framework-agnostic, pe.edu.nova.java.libs) with Quarkus. " +
-                    "Exposes NotificationConfiguration and NotificationFacade as @Singleton CDI beans, " +
-                    "configurable via @ConfigMapping under nova.notifications.*"
-                )
-                url.set("https://github.com/ahincho/nova-java-notifications-quarkus-extension")
-                licenses {
-                    license {
-                        name.set("Apache License 2.0")
-                        url.set("https://www.apache.org/licenses/LICENSE-2.0")
-                    }
-                }
-                developers {
-                    developer {
-                        id.set("ahincho")
-                        name.set("ahincho")
-                        email.set("ahincho@users.noreply.github.com")
-                    }
-                }
-                scm {
-                    url.set("https://github.com/ahincho/nova-java-notifications-quarkus-extension")
-                    connection.set("scm:git:git@github.com:ahincho/nova-java-notifications-quarkus-extension.git")
-                }
-            }
         }
     }
     repositories {
