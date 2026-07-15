@@ -31,7 +31,7 @@ public interface NotificationsConfig {
 
     Resilience resilience();
 
-    @ConfigMapping(prefix = "nova.notifications.email", namingStrategy = ConfigMapping.NamingStrategy.VERBATIM)
+    @ConfigMapping(prefix = "nova.notifications.email", namingStrategy = ConfigMapping.NamingStrategy.KEBAB_CASE)
     interface Email {
         /** "sendgrid" or "mailgun". */
         String provider();
@@ -39,7 +39,7 @@ public interface NotificationsConfig {
         String defaultSender();
     }
 
-    @ConfigMapping(prefix = "nova.notifications.sms", namingStrategy = ConfigMapping.NamingStrategy.VERBATIM)
+    @ConfigMapping(prefix = "nova.notifications.sms", namingStrategy = ConfigMapping.NamingStrategy.KEBAB_CASE)
     interface Sms {
         default String provider() {
             return "twilio";
@@ -49,7 +49,7 @@ public interface NotificationsConfig {
         String fromNumber();
     }
 
-    @ConfigMapping(prefix = "nova.notifications.push", namingStrategy = ConfigMapping.NamingStrategy.VERBATIM)
+    @ConfigMapping(prefix = "nova.notifications.push", namingStrategy = ConfigMapping.NamingStrategy.KEBAB_CASE)
     interface Push {
         default String provider() {
             return "firebase";
@@ -58,12 +58,12 @@ public interface NotificationsConfig {
         String serverKey();
     }
 
-    @ConfigMapping(prefix = "nova.notifications.slack", namingStrategy = ConfigMapping.NamingStrategy.VERBATIM)
+    @ConfigMapping(prefix = "nova.notifications.slack", namingStrategy = ConfigMapping.NamingStrategy.KEBAB_CASE)
     interface Slack {
         String defaultWebhookUrl();
     }
 
-    @ConfigMapping(prefix = "nova.notifications.resilience", namingStrategy = ConfigMapping.NamingStrategy.VERBATIM)
+    @ConfigMapping(prefix = "nova.notifications.resilience", namingStrategy = ConfigMapping.NamingStrategy.KEBAB_CASE)
     interface Resilience {
         default int maxAttempts() {
             return 3;
