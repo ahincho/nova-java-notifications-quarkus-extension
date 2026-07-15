@@ -24,23 +24,23 @@ import pe.edu.nova.java.libs.notifications.infrastructure.configuration.Resilien
  */
 class QuarkusExtensionUnitTest {
 
-    private final NotificationsProducer producer = new NotificationsProducer();
-
     @Test
     void producerIsInstantiableAndHasNoRequiredDependencies() {
+        NotificationsProducer producer = new NotificationsProducer();
         assertThat(producer).isNotNull();
     }
 
     @Test
     void applyConfigToBuilderMapsEmailChannelFromConfig() {
-        StubConfig config = new StubConfig();
+        NotificationsProducer producer = newProducer(true,
+                new EmailConfig() {
+                    public String provider() { return "sendgrid"; }
+                    public String apiKey() { return "test-api-key"; }
+                    public String defaultSender() { return "no-reply@example.com"; }
+                },
+                null, null, null);
         NotificationConfiguration.Builder builder = NotificationConfiguration.builder();
-        producer.applyConfigToBuilder(
-                config, builder,
-                stubOne(new StubEmail("sendgrid", "test-api-key", "no-reply@example.com")),
-                stubEmpty(),
-                stubEmpty(),
-                stubEmpty());
+        producer.applyConfigToBuilder(builder);
         NotificationConfiguration built = builder.build();
 
         assertThat(built.email()).isPresent();
@@ -52,14 +52,28 @@ class QuarkusExtensionUnitTest {
 
     @Test
     void applyConfigToBuilderMapsAllFourChannelsIndependently() {
-        StubConfig config = new StubConfig();
+        NotificationsProducer producer = newProducer(true,
+                new EmailConfig() {
+                    public String provider() { return "mailgun"; }
+                    public String apiKey() { return "key-1"; }
+                    public String defaultSender() { return "noreply@example.com"; }
+                },
+                new SmsConfig() {
+                    public String provider() { return "twilio"; }
+                    public String accountSid() { return "AC1"; }
+                    public String authToken() { return "token-1"; }
+                    public String fromNumber() { return "+15005550006"; }
+                },
+                new PushConfig() {
+                    public String provider() { return "firebase"; }
+                    public String projectId() { return "project-1"; }
+                    public String serverKey() { return "server-key-1"; }
+                },
+                new SlackConfig() {
+                    public String defaultWebhookUrl() { return "https://hooks.slack.com/services/T0/B0/secret"; }
+                });
         NotificationConfiguration.Builder builder = NotificationConfiguration.builder();
-        producer.applyConfigToBuilder(
-                config, builder,
-                stubOne(new StubEmail("mailgun", "key-1", "noreply@example.com")),
-                stubOne(new StubSms("twilio", "AC1", "token-1", "+15005550006")),
-                stubOne(new StubPush("firebase", "project-1", "server-key-1")),
-                stubOne(new StubSlack("https://hooks.slack.com/services/T0/B0/secret")));
+        producer.applyConfigToBuilder(builder);
         NotificationConfiguration built = builder.build();
 
         assertThat(built.email()).isPresent();
@@ -70,14 +84,15 @@ class QuarkusExtensionUnitTest {
 
     @Test
     void applyConfigToBuilderSkipsChannelsWithMissingFields() {
-        StubConfig config = new StubConfig();
+        NotificationsProducer producer = newProducer(true,
+                new EmailConfig() {
+                    public String provider() { return null; }
+                    public String apiKey() { return "key"; }
+                    public String defaultSender() { return "noreply@example.com"; }
+                },
+                null, null, null);
         NotificationConfiguration.Builder builder = NotificationConfiguration.builder();
-        producer.applyConfigToBuilder(
-                config, builder,
-                stubOne(new StubEmail(null, "key", "noreply@example.com")),
-                stubEmpty(),
-                stubEmpty(),
-                stubEmpty());
+        producer.applyConfigToBuilder(builder);
         NotificationConfiguration built = builder.build();
 
         assertThat(built.email()).isEmpty();
@@ -109,14 +124,28 @@ class QuarkusExtensionUnitTest {
 
     @Test
     void applyConfigToBuilderSkipsAllChannelsWhenEnabledIsFalse() {
-        StubConfig config = new StubConfig().withEnabled(false);
+        NotificationsProducer producer = newProducer(false,
+                new EmailConfig() {
+                    public String provider() { return "sendgrid"; }
+                    public String apiKey() { return "test-api-key"; }
+                    public String defaultSender() { return "no-reply@example.com"; }
+                },
+                new SmsConfig() {
+                    public String provider() { return "twilio"; }
+                    public String accountSid() { return "AC1"; }
+                    public String authToken() { return "token-1"; }
+                    public String fromNumber() { return "+15005550006"; }
+                },
+                new PushConfig() {
+                    public String provider() { return "firebase"; }
+                    public String projectId() { return "project-1"; }
+                    public String serverKey() { return "server-key-1"; }
+                },
+                new SlackConfig() {
+                    public String defaultWebhookUrl() { return "https://hooks.slack.com/services/T0/B0/secret"; }
+                });
         NotificationConfiguration.Builder builder = NotificationConfiguration.builder();
-        producer.applyConfigToBuilder(
-                config, builder,
-                stubOne(new StubEmail("sendgrid", "test-api-key", "no-reply@example.com")),
-                stubOne(new StubSms("twilio", "AC1", "token-1", "+15005550006")),
-                stubOne(new StubPush("firebase", "project-1", "server-key-1")),
-                stubOne(new StubSlack("https://hooks.slack.com/services/T0/B0/secret")));
+        producer.applyConfigToBuilder(builder);
         NotificationConfiguration built = builder.build();
 
         assertThat(built.email()).isEmpty();
@@ -125,49 +154,24 @@ class QuarkusExtensionUnitTest {
         assertThat(built.slack()).isEmpty();
     }
 
-    private static final class StubConfig implements NotificationsConfig {
-        private Optional<Boolean> enabled = Optional.of(true);
-
-        StubConfig withEnabled(boolean enabled) {
-            this.enabled = Optional.of(enabled);
-            return this;
-        }
-
-        @Override public Optional<Boolean> enabled() { return enabled; }
-        @Override public NotificationsConfig.Resilience resilience() { return new StubResilience(); }
-    }
-
-    private record StubEmail(String provider, String apiKey, String defaultSender)
-            implements NotificationsConfig.Email {}
-
-    private record StubSms(String provider, String accountSid, String authToken, String fromNumber)
-            implements NotificationsConfig.Sms {}
-
-    private record StubPush(String provider, String projectId, String serverKey)
-            implements NotificationsConfig.Push {}
-
-    private record StubSlack(String defaultWebhookUrl) implements NotificationsConfig.Slack {}
-
-    private static final class StubResilience implements NotificationsConfig.Resilience {
-        @Override public int maxAttempts() { return 3; }
-        @Override public long initialBackoffMillis() { return 200; }
-        @Override public int circuitFailureThreshold() { return 5; }
-        @Override public long circuitOpenDurationSeconds() { return 30; }
-        @Override public int rateLimitPermitsPerSecond() { return 0; }
+    /** Build a producer with stubbed channel configs for testing. */
+    private static NotificationsProducer newProducer(boolean enabled, EmailConfig email,
+                                                      SmsConfig sms, PushConfig push, SlackConfig slack) {
+        NotificationsProducer producer = new NotificationsProducer();
+        producer.config = () -> Optional.of(enabled);
+        producer.emailConfig = email == null ? new SingleElementInstance<>(null) : new SingleElementInstance<>(email);
+        producer.smsConfig = sms == null ? new SingleElementInstance<>(null) : new SingleElementInstance<>(sms);
+        producer.pushConfig = push == null ? new SingleElementInstance<>(null) : new SingleElementInstance<>(push);
+        producer.slackConfig = slack == null ? new SingleElementInstance<>(null) : new SingleElementInstance<>(slack);
+        producer.resilienceConfig = new SingleElementInstance<>(null);
+        producer.customEventPublisher = new SingleElementInstance<>(null);
+        return producer;
     }
 
     /**
      * CDI {@link Instance} adapter for unit tests: presents a single
      * element (or none) without depending on Quarkus's full ARC runtime.
      */
-    private static <T> Instance<T> stubOne(T value) {
-        return new SingleElementInstance<>(value);
-    }
-
-    private static <T> Instance<T> stubEmpty() {
-        return new SingleElementInstance<>(null);
-    }
-
     private static final class SingleElementInstance<T> implements Instance<T> {
         private final T value;
         SingleElementInstance(T value) { this.value = value; }
