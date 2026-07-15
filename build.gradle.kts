@@ -21,6 +21,27 @@ java {
 repositories {
     mavenLocal()
     mavenCentral()
+    // GitHub Packages of nova-java-notifications (the pure library this extension
+    // adapts to Quarkus). Without this entry, ./gradlew publish fails at
+    // compileJava because it cannot resolve pe.edu.nova.java.libs:nova-notifications
+    // from Maven Central (which only mirrors Maven-published artifacts, not
+    // GitHub Packages). NOVA_PACKAGES_READ_TOKEN is a PAT with packages:read
+    // scope; falls back to GITHUB_TOKEN if not set (GITHUB_TOKEN can read
+    // packages within the same repo but not across repos, so the cross-repo
+    // dependency on nova-java-notifications would fail without the PAT).
+    maven {
+        name = "GitHubPackages-NovaNotifications"
+        url = uri("https://maven.pkg.github.com/ahincho/nova-java-notifications")
+        val token = System.getenv("NOVA_PACKAGES_READ_TOKEN")
+            ?: System.getenv("NOVA_RELEASE_PAT")
+            ?: System.getenv("GITHUB_TOKEN")
+        if (!token.isNullOrBlank()) {
+            credentials {
+                username = System.getenv("GITHUB_ACTOR") ?: "x-access-token"
+                password = token
+            }
+        }
+    }
 }
 
 val junitVersion = "6.0.0"
