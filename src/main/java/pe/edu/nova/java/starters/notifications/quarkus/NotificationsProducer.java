@@ -62,6 +62,15 @@ public class NotificationsProducer {
      * CDI {@code Instance} parameter which is hard to mock in pure JUnit.
      */
     void applyConfigToBuilder(NotificationsConfig config, NotificationConfiguration.Builder builder) {
+        if (!config.enabled().orElse(true)) {
+            // Library is disabled at the starter level: skip all channel
+            // assembly. The resilience config (set by the caller before this
+            // method is invoked) is kept. The corresponding
+            // {@link #notificationFacade} method returns a no-op facade so
+            // consumers can still inject {@code NotificationFacade} without
+            // a startup {@code ConfigurationException}.
+            return;
+        }
         NotificationsConfig.Email email = config.email();
         if (email != null && allPresent(email.provider(), email.apiKey(), email.defaultSender())) {
             builder.email(EmailConfiguration.builder()
@@ -88,7 +97,14 @@ public class NotificationsProducer {
 
     @Produces
     @Singleton
-    public NotificationFacade notificationFacade(NotificationConfiguration configuration) {
+    public NotificationFacade notificationFacade(
+            NotificationsConfig config,
+            NotificationConfiguration configuration) {
+        if (!config.enabled().orElse(true)) {
+            LOGGER.warn("Nova Notifications (Quarkus) is disabled via nova.notifications.enabled=false; "
+                    + "producing a no-op facade (every send returns FAILED with ErrorCode.DISABLED).");
+            return NotificationFacade.createDisabled();
+        }
         return NotificationFacade.create(configuration);
     }
 

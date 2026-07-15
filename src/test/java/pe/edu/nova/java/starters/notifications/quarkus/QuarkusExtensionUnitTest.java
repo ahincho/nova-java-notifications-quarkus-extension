@@ -97,16 +97,40 @@ class QuarkusExtensionUnitTest {
         assertThat(disabled.maxAttempts()).isEqualTo(1);
     }
 
+    @Test
+    void applyConfigToBuilderSkipsAllChannelsWhenEnabledIsFalse() {
+        StubConfig config = new StubConfig()
+                .withEnabled(false)
+                .withEmail("sendgrid", "test-api-key", "noreply@example.com")
+                .withSms("twilio", "AC1", "token-1", "+15005550006")
+                .withPush("firebase", "project-1", "server-key-1")
+                .withSlack("https://hooks.slack.com/services/T0/B0/secret");
+        NotificationConfiguration.Builder builder = NotificationConfiguration.builder();
+        producer.applyConfigToBuilder(config, builder);
+        NotificationConfiguration built = builder.build();
+
+        assertThat(built.email()).isEmpty();
+        assertThat(built.sms()).isEmpty();
+        assertThat(built.push()).isEmpty();
+        assertThat(built.slack()).isEmpty();
+    }
+
     /**
      * Manual stub of {@link NotificationsConfig} for unit tests. Implements
      * the interface as a mutable holder — easier to read and maintain than
      * a mocking library, and exposes precisely the fields this test cares about.
      */
     private static final class StubConfig implements NotificationsConfig {
+        private Optional<Boolean> enabled = Optional.of(true);
         private StubEmail email;
         private StubSms sms;
         private StubPush push;
         private StubSlack slack;
+
+        StubConfig withEnabled(boolean enabled) {
+            this.enabled = Optional.of(enabled);
+            return this;
+        }
 
         StubConfig withEmail(String provider, String apiKey, String defaultSender) {
             this.email = new StubEmail(provider, apiKey, defaultSender);
@@ -128,7 +152,7 @@ class QuarkusExtensionUnitTest {
             return this;
         }
 
-        @Override public Optional<Boolean> enabled() { return Optional.of(true); }
+        @Override public Optional<Boolean> enabled() { return enabled; }
         @Override public NotificationsConfig.Email email() { return email; }
         @Override public Optional<NotificationsConfig.Sms> sms() { return Optional.ofNullable(sms); }
         @Override public Optional<NotificationsConfig.Push> push() { return Optional.ofNullable(push); }
