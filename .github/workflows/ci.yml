@@ -26,4 +26,5 @@ jobs:
     uses: ahincho/nova-devops/.github/workflows/reusable-build-matrix.yml@main
     with:
       build-tool: gradle
+      java-versions: '["25"]'
     secrets: inherit
