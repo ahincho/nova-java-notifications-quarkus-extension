@@ -7,12 +7,13 @@ import java.util.Optional;
 /**
  * Quarkus configuration mapping for the notifications extension.
  *
- * <p>Maps the {@code galaxy-training.notifications.*} properties in
- * {@code application.properties} (kept consistent with the Spring Boot
- * starter; see {@code NotificationsProperties} in the SB module for the
- * shared naming rationale).
+ * <p>Maps the {@code nova.notifications.*} properties from {@code application.properties}.
+ * Uses the same prefix as the Spring Boot starter and Micronaut module, and
+ * follows the same convention as the newer Nova starters
+ * (e.g. {@code nova-observability-spring-boot-starter} uses
+ * {@code nova.observability.*}).
  */
-@ConfigMapping(prefix = "galaxy-training.notifications", namingStrategy = ConfigMapping.NamingStrategy.VERBATIM)
+@ConfigMapping(prefix = "nova.notifications", namingStrategy = ConfigMapping.NamingStrategy.VERBATIM)
 public interface NotificationsConfig {
 
     /** Master switch, default {@code true}. */
