@@ -71,6 +71,30 @@ jobs:
           fi
           echo "Visibility validation OK"
 
+      - name: Resolve packages read token
+        id: resolve_token
+        env:
+          ACTOR: ${{ github.actor }}
+          TOKEN_A: ${{ secrets.NOVA_PACKAGES_READ_TOKEN }}
+          TOKEN_B: ${{ secrets.NOVA_RELEASE_PAT }}
+          TOKEN_C: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Pick the first non-empty token (NOVA_PACKAGES_READ_TOKEN > NOVA_RELEASE_PAT > GITHUB_TOKEN).
+          # GitHub Actions expression `secrets.X || secrets.Y` doesn't short-circuit
+          # the way bash `||` does; we do it in shell instead. Without this step,
+          # the expression evaluates to "1" (one char) when secrets.NOVA_PACKAGES_READ_TOKEN
+          # is unset (treated as null), even if secrets.NOVA_RELEASE_PAT has a value.
+          if [ -n "${TOKEN_A}" ]; then
+            echo "value=${TOKEN_A}" >> "$GITHUB_OUTPUT"
+            echo "Resolved from NOVA_PACKAGES_READ_TOKEN (length=${#TOKEN_A})"
+          elif [ -n "${TOKEN_B}" ]; then
+            echo "value=${TOKEN_B}" >> "$GITHUB_OUTPUT"
+            echo "Resolved from NOVA_RELEASE_PAT (length=${#TOKEN_B})"
+          else
+            echo "value=${TOKEN_C}" >> "$GITHUB_OUTPUT"
+            echo "Resolved from GITHUB_TOKEN (length=${#TOKEN_C})"
+          fi
+
       - name: Publish to GitHub Packages
         run: ./gradlew publish -Pvisibility=${{ steps.visibility.outputs.value }}
         env:
@@ -78,4 +102,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Used only to READ internal Nova Platform dependencies published in other
           # repos' GitHub Packages (GITHUB_TOKEN cannot read packages cross-repo).
-          NOVA_PACKAGES_READ_TOKEN: ${{ secrets.NOVA_PACKAGES_READ_TOKEN || secrets.NOVA_RELEASE_PAT || secrets.GITHUB_TOKEN }}
+          NOVA_PACKAGES_READ_TOKEN: ${{ steps.resolve_token.outputs.value }}
