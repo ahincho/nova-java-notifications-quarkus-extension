@@ -5,6 +5,12 @@ plugins {
     checkstyle
 }
 
+import java.io.File as JFile
+import java.io.FileOutputStream as JFOS
+import java.io.InputStream as JInputStream
+import java.io.OutputStream as JOS
+import java.net.URLClassLoader
+
 group = findProperty("group") as String
 version = findProperty("version") as String
 
@@ -31,9 +37,16 @@ repositories {
     // scope; falls back to GITHUB_TOKEN if not set (GITHUB_TOKEN can read
     // packages within the same repo but not across repos, so the cross-repo
     // dependency on nova-java-notifications would fail without the PAT).
+    // The content {} filter scopes this repo to pe.edu.nova.java.* coordinates
+    // only; otherwise every missing artifact on Maven Central would 401 on
+    // GitHub Packages and break resolution (Gradle treats 401 as "fail", not
+    // "try the next repo").
     maven {
         name = "GitHubPackages-NovaNotifications"
         url = uri("https://maven.pkg.github.com/ahincho/nova-java-notifications")
+        content {
+            includeGroupByRegex("pe\\.edu\\.nova\\.java.*")
+        }
         val token = System.getenv("NOVA_PACKAGES_READ_TOKEN")
             ?: System.getenv("NOVA_RELEASE_PAT")
             ?: System.getenv("GITHUB_TOKEN")
@@ -57,6 +70,14 @@ dependencies {
     implementation("io.quarkus:quarkus-arc")
     // Quarkus SmallRye Config — needed for @ConfigMapping.
     implementation("io.quarkus:quarkus-config-yaml")
+
+    // Jandex runtime: used by the build-time index generation task below to
+    // ship META-INF/jandex.idx in this JAR. Without it, Quarkus apps cannot
+    // discover @Singleton beans declared in this extension JAR (CDI build-time
+    // scan only sees classes that appear in some jandex.idx on the classpath).
+    // NB: org.jboss:jandex on Maven Central is a parent POM only (no .jar).
+    // The actual jar with org.jboss.jandex.Indexer ships as io.smallrye:jandex.
+    implementation("io.smallrye:jandex:3.2.7")
 
     // The pure library this extension adapts to Quarkus.
     // artifactId is `nova-notifications` (no `java-` segment) — Nova convention:
@@ -138,6 +159,76 @@ tasks.withType<GenerateModuleMetadata>().configureEach {
 checkstyle {
     toolVersion = "10.20.1"
     sourceSets = listOf(project.sourceSets.main.get())
+}
+
+// Generate META-INF/jandex.idx at processResources time so consuming Quarkus
+// apps discover the @Singleton beans declared here. Without an index, the
+// CDI build-time scan in Quarkus 3.x does not pick up classes from extension
+// JARs and the consumer fails with UnsatisfiedResolutionException on
+// NotificationFacade. We only index this project's own classes (not the
+// transitive nova-notifications library) so we don't shadow beans produced
+// by other jars.
+val generateJandexIndex by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated/resources/jandex")
+    inputs.files(sourceSets.main.get().output.classesDirs)
+    inputs.files(configurations.runtimeClasspath)
+    outputs.dir(outputDir)
+    doLast {
+        val classesDir = sourceSets.main.get().output.classesDirs.asPath
+        val idxFile = outputDir.get().file("META-INF/jandex.idx").asFile
+        idxFile.parentFile.mkdirs()
+
+        // Build a classloader that includes this project's compiled classes
+        // AND the runtime classpath (where jandex-core lives). The default
+        // task classloader would not see Jandex on the runtime classpath.
+        val urls = configurations.runtimeClasspath.get().files
+            .map { it.toURI().toURL() }
+            .toTypedArray()
+        val classLoader = URLClassLoader(urls, javaClass.classLoader)
+        val indexerCls = classLoader.loadClass("org.jboss.jandex.Indexer")
+        val indexer = indexerCls.getDeclaredConstructor().newInstance()
+        val fileCls = JFile::class.java
+        val completeMethod = indexerCls.getMethod("complete")
+
+        val classesFile = JFile(classesDir.toString())
+        val streamMethod = indexerCls.getMethod("index", JInputStream::class.java)
+        classesFile.walkTopDown().filter { it.name.endsWith(".class") }.forEach { f ->
+            // Jandex 3.x dropped the index(File) overload in favor of
+            // index(InputStream). Read the .class file and feed the stream.
+            val stream = f.inputStream()
+            try {
+                streamMethod.invoke(indexer, stream)
+            } finally {
+                stream.close()
+            }
+        }
+        val index = completeMethod.invoke(indexer)
+
+        val writerCls = classLoader.loadClass("org.jboss.jandex.IndexWriter")
+        // Jandex 3.x: IndexWriter(OutputStream) + write(Index).
+        val writerCtor = writerCls.getConstructor(JOS::class.java)
+        val writeMethod = writerCls.getMethod("write", index.javaClass)
+        val fos = JFOS(idxFile)
+        try {
+            val writer = writerCtor.newInstance(fos)
+            writeMethod.invoke(writer, index)
+        } finally {
+            fos.close()
+        }
+        logger.lifecycle("Wrote ${idxFile.absolutePath}")
+    }
+}
+
+val processResources = tasks.named("processResources") {
+    dependsOn(generateJandexIndex)
+}
+
+// Wire the generated META-INF/jandex.idx into the final JAR at exactly
+// META-INF/jandex.idx (Quarkus build-time CDI scan looks there).
+tasks.named<Copy>("processResources") {
+    from(generateJandexIndex.map { layout.buildDirectory.dir("generated/resources/jandex") }) {
+        include("META-INF/jandex.idx")
+    }
 }
 
 publishing {
