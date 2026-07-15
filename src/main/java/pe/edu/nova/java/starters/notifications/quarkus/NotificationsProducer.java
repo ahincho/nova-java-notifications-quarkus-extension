@@ -105,6 +105,12 @@ public class NotificationsProducer {
      * {@code NotificationsProducer} with explicit channel config values.
      */
     void applyConfigToBuilder(NotificationConfiguration.Builder builder) {
+        if (!config.enabled().orElse(true)) {
+            // Master switch is off: skip all channel assembly. Resilience
+            // and custom event publishers are wired by
+            // notificationConfiguration() before this method is called.
+            return;
+        }
         emailConfig.forEach(email -> {
             if (allPresent(email.provider(), email.apiKey(), email.defaultSender())) {
                 builder.email(EmailConfiguration.builder()

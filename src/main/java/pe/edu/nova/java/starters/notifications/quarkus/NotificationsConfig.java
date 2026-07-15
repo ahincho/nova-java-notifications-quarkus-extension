@@ -1,7 +1,6 @@
 package pe.edu.nova.java.starters.notifications.quarkus;
 
 import io.smallrye.config.ConfigMapping;
-import io.smallrye.config.WithDefault;
 import java.util.Optional;
 
 /**
